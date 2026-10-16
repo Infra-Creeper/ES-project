@@ -1,0 +1,15 @@
+env/
+__pycache__/
+recent/
+combined/
+# Editor and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+log.txt
+# Temporary files
+*.tmp
+*.swp
+*.pyc
+*.wav
