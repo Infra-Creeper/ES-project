@@ -8,6 +8,7 @@ combined/
 .DS_Store
 Thumbs.db
 log.txt
+*.onnx
 # Temporary files
 *.tmp
 *.swp
