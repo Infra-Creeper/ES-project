@@ -6,6 +6,7 @@ from datetime import datetime, timezone, date
 import random
 from itertools import combinations
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -18,14 +19,17 @@ PROJECT_DIR = Path(__file__).resolve().parent
 def establishDB():
     """Connect to MongoDB and initialise collection handles. Returns True on success."""
     try:
-        global client, db, audio_chunks, audio_recordings, analysis
+        global client, db, audio_chunks, audio_recordings, analysis, stations
 
-        client = MongoClient("mongodb://localhost:27017/")
+        client = MongoClient(
+            "mongodb://localhost:27017/", serverSelectionTimeoutMS=2000
+        )
         client.admin.command("ping")
         db = client["ES_project"]
         audio_chunks = db["audio_chunks"]
         audio_recordings = db["audio_recordings"]
         analysis = db["analysis"]
+        stations = db["stations"]
     
         logger.debug("Connected to MongoDB client")
         print("Connected to MongoDB client")
@@ -203,7 +207,27 @@ def _count_documents(collection, query: dict = {}):
         return 0
 # ── Specific data commands ──────────────────────────────────────────────────────────
 
-def put_analysis(entry: dict[str,any]):
-    """Save an analysis without adding MongoDB's _id to the API response."""
-    _insert_one(analysis, entry.copy())
-    logger.debug(f"Uploaded to analysis: {entry}")
+def put_analysis(entry: dict[str, Any]):
+    """Persist an analysis and propagate storage failures to the API."""
+    result = analysis.insert_one(entry.copy())
+    logger.debug("Uploaded analysis %s", result.inserted_id)
+    return result.inserted_id
+
+
+def get_analyses() -> list[dict]:
+    """Return stored analyses newest first; database errors are handled by the API."""
+    return list(
+        analysis.find({}).sort(
+            [("detected_at", DESCENDING), ("created_at", DESCENDING), ("_id", DESCENDING)]
+        )
+    )
+
+
+def get_stations() -> list[dict]:
+    """Return configured monitoring stations without synthesizing telemetry."""
+    return list(stations.find({}).sort("_id", ASCENDING))
+
+
+def get_station(station_id: str) -> dict | None:
+    """Find a station by its public ID or MongoDB string ID."""
+    return stations.find_one({"$or": [{"id": station_id}, {"_id": station_id}]})

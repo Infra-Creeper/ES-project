@@ -10,9 +10,11 @@ Run this BEFORE any hardware work. If this doesn't work, nothing else matters ye
 
 import numpy as np
 import onnxruntime as ort
+from pathlib import Path
 
-MODEL_PATH = "perch_v2.onnx"
-LABELS_PATH = "labels.csv"
+PROJECT_DIR = Path(__file__).resolve().parent
+MODEL_PATH = PROJECT_DIR / "perch_v2.onnx"
+LABELS_PATH = PROJECT_DIR / "labels.csv"
 SAMPLE_RATE = 32000
 CLIP_SECONDS = 5
 NUM_SAMPLES = SAMPLE_RATE * CLIP_SECONDS  # 160,000
