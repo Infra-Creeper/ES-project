@@ -14,7 +14,9 @@ from io import BytesIO
 from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
+
 
 import MongoCRUD as crud
 from auto_window import auto_extract_best_clip
@@ -232,6 +234,17 @@ async def MongoDB_lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=MongoDB_lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins= [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.exception_handler(HTTPException)
