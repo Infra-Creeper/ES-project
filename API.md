@@ -84,7 +84,11 @@ curl -X POST http://localhost:8000/api/detections/analyze \
 The species label is the model's prediction; unavailable common names and
 animal groups are not inferred. An uncertain prediction has
 `classification: "unclassified"`, `review_required: true`, null species names,
-and group `"Unknown"`.
+and group `"Unknown"`. Confidence is the selected top prediction's softmax
+score normalized against the model's returned top-five logits:
+`exp(logit_i) / sum(exp(logit_j))`. The implementation subtracts the largest
+logit before exponentiation for numerical stability. This is relative
+confidence among those five candidates, not a calibrated probability.
 
 ## Detection history
 

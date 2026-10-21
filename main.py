@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 MODEL_NAME = "Google Perch"
 MODEL_VERSION = "v2"
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
-CONFIDENCE_THRESHOLD = 0.5
+CONFIDENCE_THRESHOLD = 0.25
 HIGH_CONFIDENCE_THRESHOLD = 0.8
 PROJECT_DIR = Path(__file__).resolve().parent
 BEST_AUDIO_PATH = PROJECT_DIR / "best_audio.wav"
@@ -65,25 +65,29 @@ def _as_datetime(value: object) -> datetime | None:
     return None
 
 
-def _confidence_from_logit(logit: object) -> float:
-    if not isinstance(logit, (int, float)):
-        return 0.0
-    score = float(logit)
-    if score >= 0:
-        return 1.0 / (1.0 + math.exp(-min(score, 709)))
-    exp_score = math.exp(max(score, -709))
-    return exp_score / (1.0 + exp_score)
-
-
-def _species_from_prediction(prediction: dict | None) -> tuple[dict, float]:
-    if not prediction or not isinstance(prediction.get("label"), str):
+def _species_from_predictions(predictions: object) -> tuple[dict, float]:
+    if not isinstance(predictions, list):
+        predictions = []
+    valid_predictions = [
+        prediction
+        for prediction in predictions
+        if isinstance(prediction, dict)
+        and isinstance(prediction.get("label"), str)
+        and isinstance(prediction.get("logit"), (int, float))
+        and math.isfinite(float(prediction["logit"]))
+    ]
+    if not valid_predictions:
         return {
             "common_name": None,
             "scientific_name": None,
             "group": "Unknown",
         }, 0.0
 
-    confidence = _confidence_from_logit(prediction.get("logit"))
+    logits = [float(prediction["logit"]) for prediction in valid_predictions]
+    max_logit = max(logits)
+    exponentials = [math.exp(logit - max_logit) for logit in logits]
+    confidence = exponentials[0] / sum(exponentials)
+    prediction = valid_predictions[0]
     if confidence < CONFIDENCE_THRESHOLD:
         return {
             "common_name": None,
@@ -111,17 +115,17 @@ def _serialize_detection(document: dict) -> dict:
     detected_at = _as_datetime(document.get("detected_at") or document.get("created_at"))
     species = document.get("species")
     confidence = document.get("confidence")
-    if not isinstance(species, dict):
-        predictions = document.get("top")
-        prediction = predictions[0] if isinstance(predictions, list) and predictions else None
-        species, confidence = _species_from_prediction(prediction)
+    predictions = document.get("top")
+    has_model_logits = isinstance(predictions, list)
+    if has_model_logits or not isinstance(species, dict):
+        species, confidence = _species_from_predictions(predictions)
     if not isinstance(confidence, (int, float)):
         confidence = 0.0
     else:
         confidence = min(1.0, max(0.0, float(confidence)))
 
     classification = document.get("classification")
-    if classification not in ("identified", "unclassified"):
+    if has_model_logits or classification not in ("identified", "unclassified"):
         classification = (
             "identified"
             if species.get("scientific_name") is not None
@@ -150,7 +154,9 @@ def _serialize_detection(document: dict) -> dict:
         "confidence": confidence,
         "classification": classification,
         "review_required": bool(
-            document.get("review_required", classification == "unclassified")
+            classification == "unclassified"
+            if has_model_logits
+            else document.get("review_required", classification == "unclassified")
         ),
         "station": station,
         "audio": audio,
@@ -442,8 +448,7 @@ async def analyze_detection(
         ) from exc
 
     predictions = model_result.get("top")
-    prediction = predictions[0] if isinstance(predictions, list) and predictions else None
-    species, confidence = _species_from_prediction(prediction)
+    species, confidence = _species_from_predictions(predictions)
     classification = (
         "identified"
         if species["scientific_name"] is not None
