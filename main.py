@@ -17,6 +17,9 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.concurrency import run_in_threadpool
 
+import shutil,os #for copy file for debugging
+
+DEBUG = False
 
 import MongoCRUD as crud
 from auto_window import auto_extract_best_clip
@@ -770,9 +773,21 @@ async def monitoring_stations(request: Request) -> dict:
         )
     return {"success": True, "data": result}
 
+def copy_file(source, dest):
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    shutil.copy2(source, dest)
+    logger.info(f"File {source} copied for debugging")
+
 
 def process_audio(path: str, processing_mode: str) -> dict:
     """Select the loudest five-second clip and classify it with the real Perch model."""
+    #--------------File saver-----------------
+    if(DEBUG): 
+        filename = os.path.basename(path)
+        destination = os.path.join("recent", filename)
+        copy_file(path, destination)
+    #-----------------------------------------
+
     auto_extract_best_clip(path, str(BEST_AUDIO_PATH))
     result = res_with_real_audio(str(BEST_AUDIO_PATH))
     if result.get("err") or not result.get("top"):
