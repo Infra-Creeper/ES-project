@@ -6,6 +6,7 @@ from time import perf_counter
 from typing import Literal
 from uuid import uuid4
 import asyncio
+import csv
 import logging
 import math
 import wave
@@ -40,8 +41,25 @@ CONFIDENCE_THRESHOLD = 0.25
 HIGH_CONFIDENCE_THRESHOLD = 0.8
 PROJECT_DIR = Path(__file__).resolve().parent
 BEST_AUDIO_PATH = PROJECT_DIR / "best_audio.wav"
+INVASIVE_LABELS_PATH = PROJECT_DIR / "invasive_labels.csv"
 analysis_lock = asyncio.Lock()
 router = APIRouter(prefix="/api")
+
+
+def _load_invasive_labels() -> frozenset[str]:
+    with INVASIVE_LABELS_PATH.open(newline="", encoding="utf-8") as labels_file:
+        return frozenset(
+            label.strip()
+            for row in csv.DictReader(labels_file)
+            if (label := row.get("label")) and label.strip()
+        )
+
+
+INVASIVE_LABELS = _load_invasive_labels()
+
+
+def _is_invasive_species(scientific_name: object) -> bool:
+    return isinstance(scientific_name, str) and scientific_name in INVASIVE_LABELS
 
 
 def _utc_iso(value: datetime | None) -> str | None:
@@ -154,6 +172,7 @@ def _serialize_detection(document: dict) -> dict:
     return {
         "id": str(record_id),
         "species": species,
+        "invasive": _is_invasive_species(species.get("scientific_name")),
         "confidence": confidence,
         "classification": classification,
         "review_required": bool(
@@ -461,6 +480,7 @@ async def analyze_detection(
     detection = {
         "id": f"FF-{uuid4().hex[:12].upper()}",
         "species": species,
+        "invasive": _is_invasive_species(species["scientific_name"]),
         "confidence": confidence,
         "classification": classification,
         "review_required": classification == "unclassified",
